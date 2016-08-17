@@ -1,0 +1,369 @@
+---
+title: "Returns - ECDF Dashboard"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load modules
+
+```{r}
+library(xlsx)
+library(ggplot2)
+library(gridExtra)
+```
+
+# Set workding directory
+```{r}
+setwd('/Users/gsarchioni/Desktop/Work/returns')
+```
+
+## Load dataset
+```{r}
+returns = read.xlsx('returns.xlsx', sheetIndex = 1)
+names(returns)[15] <- 'X12month'
+
+# Add month column
+returns$month <- month(returns$Date)
+
+# Add month factor column
+returns$month_factor <- factor(returns$month,
+                               levels = as.character(seq(1,12,1)))
+```
+
+# Charting function
+
+## ECDF Chart
+### Create subset_by_var function
+```{r}
+subset_by_var <- function(dataframe, var) {
+  var_sub <- dataframe[,c('month', var)]
+  return(var_sub)
+}
+```
+
+### Create subset_by_month function
+```{r}
+subset_by_month <- function(dataframe, m) {
+  month_sub <- subset(dataframe, month == m)
+  return(month_sub)
+}
+```
+
+### Create ECDF dataframe function
+```{r}
+rets <- c(seq(-30,-10,5),
+                seq(-7.5, 7.5, 2.5),
+                seq(10,30,5))
+
+length_rest <- length(rets)
+
+create_ecdf <- function(dataframe) {
+  
+  # Create datframe structure
+  m_ecdf <- data.frame(rets,
+                       'ecdf' = numeric(length_rest))
+  
+  ECDF <- ecdf(dataframe[,2])
+  
+  for(i in 1:length_rest) {
+    
+    r <- m_ecdf$rets[i]
+    
+    if(r < 0) {
+      m_ecdf$ecdf[i] <- ECDF(r)
+    } else {
+      m_ecdf$ecdf[i] <- 1 - ECDF(r)
+    }
+  }
+  
+  return(m_ecdf)
+}
+```
+
+### Basic chart function
+```{r}
+create_basic_ecdf_chart <- function(dataframe, variable) {
+  
+  name = sub("X*","", variable)
+  title = paste("ECDF -",name)
+  
+  b_chart <- ggplot(data = dataframe,
+                    aes(x = return_list,
+                        y = ecdf)) +
+    labs(x = "Returns",
+         y = "Probability",
+         title = title) +
+    scale_x_continuous(breaks = rets) +
+    scale_y_continuous(breaks = seq(0,0.6,0.1)) +
+    theme(panel.background = element_blank(),
+          panel.grid.major.x = element_line(colour = 'grey',
+                                            size = 0.1),
+          panel.grid.major.y = element_line(colour = 'grey',
+                                            size = 0.1),
+          plot.title = element_text(face = 'bold',
+                                    size = 12,
+                                    hjust = 0.05,
+                                    margin = margin(10,0,15,0)),
+          axis.ticks = element_blank(),
+          axis.title.y = element_text(face = 'bold',
+                                      size = 10,
+                                      margin = margin(0,15,0,5)),
+          axis.title.x = element_text(face = 'bold',
+                                      size = 10,
+                                      margin = margin(15,0,5,0)))
+  
+  return(b_chart)
+}
+```
+
+### Function to extract focus month given variables
+```{r}
+focus_month <- function(var) {
+  var_month <- gsub("[^0-9]","",var)
+  curr_month <- month(today())
+  
+  modulus <- (curr_month + as.numeric(var_month)) %% 12
+  
+  if(modulus == 0) {
+    f_month <- 12
+  } else {
+    f_month <- modulus
+  }
+  
+  return(f_month)
+}
+```
+
+
+### Higlight function
+```{r}
+highlight_point <- function(chart, dataframe, f_month) {
+  
+  f_sub <- subset_by_month(dataframe, f_month)
+  m_ecdf <- create_ecdf(f_sub) 
+  
+  new_chart <- chart +
+    geom_line(data = m_ecdf,
+              aes(x = rets,
+                  y = ecdf),
+              colour = '#ff7f7f') +
+    geom_point(data = subset(m_ecdf, ecdf >= 0.1),
+               aes(x = rets,
+                   y = ecdf),
+               size = 1.5,
+               pch = 21,
+               colour = '#ff7f7f',
+               fill = 'white',
+               stroke = 2) +
+    geom_point(data = subset(m_ecdf, ecdf < 0.1),
+               aes(x = rets,
+                   y = ecdf),
+               pch = 21,
+               size = 0.7,
+               colour = '#ff7f7f',
+               fill = 'white') +
+    annotate('text',
+           x = -25,
+           y = 0.1,
+           size = 9,
+           label = month.abb[f_month],
+           fontface = 'bold',
+           colour = '#ff7f7f')
+              
+  return(new_chart)
+}
+```
+
+### Other month function
+```{r}
+other_point <- function(chart, dataframe, other_month) {
+  
+  om_sub <- subset_by_month(dataframe, other_month)
+  m_ecdf <- create_ecdf(om_sub) 
+  
+  new_chart <- chart +
+    geom_line(data = m_ecdf,
+              aes(x = rets,
+                  y = ecdf),
+              colour = '#e5e5e5')
+    
+  return(new_chart)
+}
+```
+
+
+### Final function
+```{r}
+all_months = seq(1,12,1)
+
+create_ecdf_chart <- function(dataframe, variable){
+  
+  # Create a dataframe for the variable only
+  sub_var <- subset_by_var(dataframe, variable)
+  
+  # Identify the focus month as per the variable indicated.
+  # E.g., if the variable is 1-month return, the focus month
+  # is the month after the current one, i.e. next month.
+  f_month <- focus_month(variable)
+  
+  # Extract all months but focus month
+  no_f_months <- all_months[all_months != f_month]
+  
+  # Create the basic chart
+  chart <- create_basic_ecdf_chart(sub_var, variable)
+  
+  # Add lines for non-focus months
+  for(i in 1:length(no_f_months)) {
+    
+    chart <- other_point(chart, sub_var, no_f_months[i])
+    
+  }
+  
+  chart <- highlight_point(chart, sub_var, f_month)
+  
+  return(chart)
+  
+}
+
+```
+
+
+
+
+## Plotting distributions
+
+### Create basic distribution charts
+```{r}
+create_basic_box_chart <- function(dataframe, variable) {
+  
+  name = sub("X*","", variable)
+  title = paste("Distribution by month -",name)
+  
+  b_chart <- ggplot(data = dataframe,
+                    aes(x = month_factor,
+                        y = as.name(variable))) +
+    labs(x = "",
+         y = "Returns",
+         title = title) +
+    scale_x_discrete(labels = month.abb[all_months]) +
+    scale_y_continuous(breaks = seq(-30,+30,5)) +
+    theme(panel.background = element_blank(),
+          panel.grid.major.y = element_line(colour = 'grey',
+                                            size = 0.1),
+          plot.title = element_text(face = 'bold',
+                                    size = 12,
+                                    hjust = 0.05,
+                                    margin = margin(10,0,15,0)),
+          axis.ticks = element_blank(),
+          axis.title.y = element_text(face = 'bold',
+                                      size = 10,
+                                      margin = margin(0,15,0,5)),
+          axis.title.x = element_text(face = 'bold',
+                                      size = 10,
+                                      margin = margin(15,0,5,0)))
+  
+  return(b_chart)
+  
+}
+
+
+```
+
+### Create boxplot
+```{r}
+create_box <- function(chart, dataframe, variable, f_month) {
+  
+  # Basic filling
+  fill <- rep('white',12)
+  
+  #Highlight focus_month
+  fill[f_month] <- "#ff7f7f"
+  
+  new_chart <- chart +
+    geom_hline(yintercept = 0,
+               colour = 'grey',
+               size = 1) +
+    geom_boxplot(data = dataframe,
+                 aes_q(x = dataframe$month_factor,
+                     y = as.name(variable)),
+                 fill = fill,
+                 outlier.size = 0.5,
+                 alpha = 0.5)
+    
+  
+  return(new_chart)
+  
+}
+```
+
+### Final function
+```{r}
+create_distrib_chart <- function(dataframe, variable){
+  
+  
+  # Identify the focus month as per the variable indicated.
+  # E.g., if the variable is 1-month return, the focus month
+  # is the month after the current one, i.e. next month.
+  f_month <- focus_month(variable)
+  
+  # Create the basic boxplot chart
+  chart <- create_basic_box_chart(dataframe, variable)
+  
+  # Add plot
+  
+  chart <- create_box(chart, dataframe, variable, f_month)
+  
+  return(chart)
+  
+}
+```
+
+## Create grid
+### Create and save function
+```{r}
+create_n_save <- function(dataframe, variable){
+  
+  var_name = sub("X*","", variable)
+  filename = paste("ECDF - ",
+                   var_name,
+                   ".png",
+                   sep = "")
+  
+  p1 <- create_ecdf_chart(dataframe, variable)
+  p2 <- create_distrib_chart(dataframe, variable)
+  
+  object <- arrangeGrob(p1,
+                        p2,
+                        layout_matrix = rbind(c(1,1,2),
+                                            c(1,1,1)))
+  
+  ggsave(filename = filename,
+         object,
+         width = 12,
+         height = 8,
+         dpi = 1000)
+  
+}
+```
+
+
+```{r}
+var_names <- names(returns[2:15])
+
+# Remove months
+var_names <- var_names[var_names != 'X2week' & var_names != 'X6week']
+len_var <- length(var_names)
+
+for(i in 1:len_var){
+  create_n_save(returns, var_names[i])
+}
+
+```
+
+
+
+
+
