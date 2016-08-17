@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(xlsx)
 library(ggplot2)
 library(gridExtra)
+library(lubridate)
 ```
 
 # Set workding directory
@@ -251,6 +252,7 @@ create_basic_box_chart <- function(dataframe, variable) {
     scale_x_discrete(labels = month.abb[all_months]) +
     scale_y_continuous(breaks = seq(-30,+30,5)) +
     theme(panel.background = element_blank(),
+          plot.background = element_rect(fill = 'transparent'),
           panel.grid.major.y = element_line(colour = 'grey',
                                             size = 0.1),
           plot.title = element_text(face = 'bold',
@@ -320,6 +322,15 @@ create_distrib_chart <- function(dataframe, variable){
   
 }
 ```
+
+```{r}
+create_distrib_chart(returns, 'X1month')
+```
+
+```{r}
+create_n_save(returns, 'X11month')
+```
+
 
 ## Create grid
 ### Create and save function
