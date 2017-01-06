@@ -1,4 +1,4 @@
-# returns
+# Empirical Cumulative Distribution Function of Returns (in R)
 Equity Returns
 
 This repository contains the code that I have written in order to visualize the historical probabilities of having a return
